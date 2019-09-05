@@ -62,7 +62,7 @@ module ActiveAdminImport
         render template: options[:template]
       end
 
-      action_item :import, only: :index do
+      action_item :import, only: :index, if: options[:if] do
         if authorized?(ActiveAdminImport::Auth::IMPORT, active_admin_config.resource_class)
           link_to(
             I18n.t('active_admin_import.import_model', plural_model: options[:plural_resource_label]),
@@ -95,6 +95,7 @@ module ActiveAdminImport
           end
         rescue ActiveRecord::Import::MissingColumnError, NoMethodError, ActiveRecord::StatementInvalid, CSV::MalformedCSVError => e
           Rails.logger.error(I18n.t('active_admin_import.file_error', message: e.message))
+          Rails.logger.error(e.backtrace.join("\n"))
           flash[:error] = I18n.t('active_admin_import.file_error', message: e.message[0..200])
         end
         redirect_to options[:back]

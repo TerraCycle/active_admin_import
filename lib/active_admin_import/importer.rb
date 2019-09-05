@@ -8,6 +8,7 @@ module ActiveAdminImport
     OPTIONS = [
       :validate,
       :on_duplicate_key_update,
+      :on_duplicate_key_ignore,
       :ignore,
       :timestamps,
       :before_import,
@@ -49,7 +50,16 @@ module ActiveAdminImport
     end
 
     def import_options
-      @import_options ||= options.slice(:validate, :on_duplicate_key_update, :ignore, :timestamps, :batch_transaction)
+      @import_options ||= options.slice(
+        :validate,
+        :validate_uniqueness,
+        :on_duplicate_key_update,
+        :on_duplicate_key_ignore,
+        :ignore,
+        :timestamps,
+        :batch_transaction,
+        :batch_size
+      )
     end
 
     def batch_replace(header_key, options)
@@ -58,6 +68,30 @@ module ActiveAdminImport
         from = line[index]
         line[index] = options[from] if options.key?(from)
         line
+      end
+    end
+
+    # Use it when CSV file contain redundant columns
+    #
+    # Example:
+    #
+    # ActiveAdmin.register Post
+    #   active_admin_import before_batch_import: lambda { |importer|
+    #                         importer.batch_slice_columns(['name', 'birthday'])
+    #                       }
+    # end
+    #
+    def batch_slice_columns(slice_columns)
+      use_indexes = []
+      headers.values.each_with_index do |val, index|
+        use_indexes << index if val.in?(slice_columns)
+      end
+      return csv_lines if use_indexes.empty?
+      # slice CSV headers
+      @headers = headers.to_a.values_at(*use_indexes).to_h
+      # slice CSV values
+      csv_lines.map! do |line|
+        line.values_at(*use_indexes)
       end
     end
 
@@ -111,7 +145,10 @@ module ActiveAdminImport
     end
 
     def assign_options(options)
-      @options = { batch_size: 1000, validate: true }.merge(options.slice(*OPTIONS))
+      @options = {
+        batch_size: 1000,
+        validate_uniqueness: true
+      }.merge(options.slice(*OPTIONS))
       detect_csv_options
     end
 
@@ -120,7 +157,7 @@ module ActiveAdminImport
                        model.csv_options
                      else
                        options[:csv_options] || {}
-                     end.reject { |_, value| value.blank? }
+                     end.reject { |_, value| value.nil? || value == "" }
     end
   end
 end

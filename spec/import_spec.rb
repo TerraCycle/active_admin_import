@@ -397,6 +397,19 @@ describe 'import', type: :feature do
           expect(Author.count).to eq(2)
         end
       end
+
+      context 'with tab separator' do
+        let(:options) do
+          attributes = { csv_options: { col_sep: "\t" } }
+          { template_object: ActiveAdminImport::Model.new(attributes) }
+        end
+
+        it 'should import file' do
+          upload_file!(:authors_with_tabs, 'tsv')
+          expect(page).to have_content 'Successfully imported 2 authors'
+          expect(Author.count).to eq(2)
+        end
+      end
     end
 
     context 'with callback procs options' do
@@ -416,6 +429,43 @@ describe 'import', type: :feature do
         expect(options[:after_batch_import]).to receive(:call).with(kind_of(ActiveAdminImport::Importer))
         upload_file!(:authors)
         expect(Author.count).to eq(2)
+      end
+    end
+  end
+
+  context "with slice_columns option" do
+    before do
+      add_author_resource template_object: ActiveAdminImport::Model.new,
+                          before_batch_import: lambda { |importer|
+                            importer.batch_slice_columns(slice_columns)
+                          }
+      visit "/admin/authors/import"
+      upload_file!(:authors)
+    end
+
+    context "slice last column and superfluous column" do
+      let(:slice_columns) { %w(name last_name not_existing_column) }
+
+      it "should not fill `birthday` column" do
+        expect(Author.pluck(:name, :last_name, :birthday)).to match_array(
+          [
+            ["Jane", "Roe", nil],
+            ["John", "Doe", nil]
+          ]
+        )
+      end
+    end
+
+    context "slice column from the middle" do
+      let(:slice_columns) { %w(name birthday) }
+
+      it "should not fill `last_name` column" do
+        expect(Author.pluck(:name, :last_name, :birthday)).to match_array(
+          [
+            ["Jane", nil, "1988-11-16".to_date],
+            ["John", nil, "1986-05-01".to_date]
+          ]
+        )
       end
     end
   end
